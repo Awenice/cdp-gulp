@@ -22,7 +22,8 @@
   ],
   "author": "Andrii Dieiev",
   "contributors": [
-    "Valerii Pavlov"
+    "Valerii Pavlov",
+    "Vadym Makhonin"
   ],
   "license": "MIT",
   "devDependencies": {
