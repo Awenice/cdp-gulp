@@ -1,20 +1,26 @@
-var gulp = require('gulp');
-var bower = require('gulp-bower');
-var less = require('gulp-less');
-var del = require('del');
-var util = require('gulp-util');
-var cached = require('gulp-cached');
-var remember = require('gulp-remember');
-var autoprefixer = require('gulp-autoprefixer');
-var csso = require('gulp-csso');
-var concat = require('gulp-concat');
-var gulpif = require('gulp-if');
-var imagemin = require('gulp-imagemin');
-var spritesmith = require('gulp.spritesmith');
-var htmlreplace = require('gulp-html-replace');
-var uglify = require('gulp-uglify');
-var mainBowerFiles = require('main-bower-files');
-var filter = require('gulp-filter');
+var gulp = require('gulp'),
+    bower = require('gulp-bower'),
+    less = require('gulp-less'),
+    del = require('del'),
+    util = require('gulp-util'),
+    cached = require('gulp-cached'),
+    remember = require('gulp-remember'),
+    autoprefixer = require('gulp-autoprefixer'),
+    csso = require('gulp-csso'),
+    concat = require('gulp-concat'),
+    gulpif = require('gulp-if'),
+    imagemin = require('gulp-imagemin'),
+    spritesmith = require('gulp.spritesmith'),
+    htmlreplace = require('gulp-html-replace'),
+    uglify = require('gulp-uglify'),
+    browserify = require('browserify'),
+    debowerify = require("debowerify"),
+    watchify = require('watchify'),
+    source = require('vinyl-source-stream'),
+    buffer = require('vinyl-buffer'),
+    babel = require('gulp-babel'),
+    sourcemaps = require('gulp-sourcemaps'),
+    plumber = require('gulp-plumber');
 
 var argv = require('minimist')(process.argv.slice(2), {
     string: 'env',
@@ -26,6 +32,7 @@ var conf = {
     images: ['src/images/**/*.{png,svg}', '!src/images/icons/**'],
     icons: 'src/images/icons/*.png',
     html: 'src/*.html',
+    js: 'src/js/main.js',
     sprite: {
         imgName: 'images/build/sprite.png',
         cssName: 'less/build/sprite.less',
@@ -52,22 +59,26 @@ gulp.task('bower', function () {
 
 gulp.task('style', ['clean', 'bower', 'images'], function () {
     return gulp.src([bootstrap.less, conf.less])
+        .pipe(gulpif(argv.env !== 'production', sourcemaps.init()))
         .pipe(less())
         .pipe(autoprefixer(['last 2 version']))
         .pipe(concat('cdp.css'))
-        // Compress code only on production build
-        .pipe(gulpif(argv.env === 'production', csso()))
+        .pipe(gulpif(argv.env !== 'production', sourcemaps.write(), csso()))
         .pipe(gulp.dest(conf.build.css));
 });
 
 gulp.task('style-watch', function () {
     return gulp.src([bootstrap.less, conf.less])
+        .pipe(plumber({
+            errorHandler: errorHandler
+        }))
+        .pipe(sourcemaps.init())
         .pipe(cached())
         .pipe(less())
-        .on('error', errorHandler)
         .pipe(autoprefixer(['last 2 version']))
         .pipe(remember())
         .pipe(concat('cdp.css'))
+        .pipe(sourcemaps.write())
         .pipe(gulp.dest(conf.build.css))
 });
 
@@ -96,27 +107,41 @@ gulp.task('html', ['clean'], function () {
         .pipe(gulp.dest(conf.build.html));
 });
 
-gulp.task('script', ['clean', 'bower'], function () {
-    return gulp.src(mainBowerFiles({includeDev: true}))
-        .pipe(filter('**/*.js'))
-        .pipe(concat('cdp.js'))
+var b = watchify(browserify(conf.js, {debug: true}))
+    .transform(debowerify);
+
+function bundle() {
+    return b
+        .bundle()
+        .pipe(source('cdp.js'))
+        .pipe(buffer())
+        .pipe(babel({
+            presets: ['es2015'],
+            compact: false,
+            sourceMaps: 'inline'
+        }))
         .pipe(gulpif(argv.env === 'production', uglify()))
         .pipe(gulp.dest(conf.build.js));
-});
+}
 
+gulp.task('script', ['clean', 'bower'], function () {
+    return bundle();
+});
 
 gulp.task('clean', function () {
     return del([conf.build.folder, conf.build.tmpFolders]);
 });
 
-gulp.task('build', ['style', 'images', 'html', 'script']);
+gulp.task('build', ['style', 'html', 'script']);
 
 gulp.task('watch', ['build'], function () {
-    return gulp.watch(conf.less, ['style-watch']);
+    b.on('update', bundle);
+    b.on('log', util.log);
+    gulp.watch(conf.less, ['style-watch']);
 });
 
 function errorHandler(error) {
     util.log(util.colors.red('Error'), error.message);
 
-    this.end();
+    this.emit('end');
 }
