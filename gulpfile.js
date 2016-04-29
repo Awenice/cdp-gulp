@@ -152,11 +152,11 @@ function buildScript () {
     return bundle(b());
 }
 
-function watchScript (callback) {
+function watchScript () {
+    gulp.watch(conf.js, ['eslint']);
     bundle(w);
     w.on('update', bundle.bind(null, w));
     w.on('log', util.log);
-    callback();
 }
 
 gulp.task('script', ['clean', 'bower', 'eslint'], buildScript);
@@ -187,7 +187,7 @@ gulp.task('plato', function (callback) {
 
 gulp.task('build', ['style', 'html', 'script']);
 
-gulp.task('watch', ['style', 'html'], function () {
+gulp.task('watch', ['build'], function () {
     watchScript();
     gulp.watch(conf.less, ['style-watch']);
 });
