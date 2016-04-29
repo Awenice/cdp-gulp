@@ -20,7 +20,8 @@ var gulp = require('gulp'),
     buffer = require('vinyl-buffer'),
     babel = require('gulp-babel'),
     sourcemaps = require('gulp-sourcemaps'),
-    plumber = require('gulp-plumber');
+    plumber = require('gulp-plumber'),
+    eslint = require('gulp-eslint');
 
 var argv = require('minimist')(process.argv.slice(2), {
     string: 'env',
@@ -32,7 +33,8 @@ var conf = {
     images: ['src/images/**/*.{png,svg}', '!src/images/icons/**'],
     icons: 'src/images/icons/*.png',
     html: 'src/*.html',
-    js: 'src/js/main.js',
+    js: 'src/js/**/*.js',
+    mainJs: 'src/js/main.js',
     sprite: {
         imgName: 'images/build/sprite.png',
         cssName: 'less/build/sprite.less',
@@ -107,7 +109,7 @@ gulp.task('html', ['clean'], function () {
         .pipe(gulp.dest(conf.build.html));
 });
 
-var b = watchify(browserify(conf.js, {debug: true}))
+var b = watchify(browserify(conf.mainJs, {debug: true}))
     .transform(debowerify);
 
 function bundle() {
@@ -124,8 +126,15 @@ function bundle() {
         .pipe(gulp.dest(conf.build.js));
 }
 
-gulp.task('script', ['clean', 'bower'], function () {
+gulp.task('script', ['clean', 'bower', 'eslint'], function () {
     return bundle();
+});
+
+gulp.task('eslint', function () {
+    return gulp.src(conf.js)
+        .pipe(eslint())
+        .pipe(eslint.format())
+        .pipe(eslint.failAfterError());
 });
 
 gulp.task('clean', function () {
@@ -138,6 +147,7 @@ gulp.task('watch', ['build'], function () {
     b.on('update', bundle);
     b.on('log', util.log);
     gulp.watch(conf.less, ['style-watch']);
+    gulp.watch(conf.js, ['eslint']);
 });
 
 function errorHandler(error) {
