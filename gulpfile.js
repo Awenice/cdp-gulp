@@ -109,12 +109,15 @@ gulp.task('html', ['clean'], function () {
         .pipe(gulp.dest(conf.build.html));
 });
 
-var b = watchify(browserify(conf.mainJs, {debug: true}))
-    .transform(debowerify);
+var b = function() {
+    return browserify(conf.mainJs, { debug: true })
+        .transform(debowerify);
+};
 
-function bundle() {
-    return b
-        .bundle()
+var w = watchify(b());
+
+function bundle(pkg) {
+    return pkg.bundle()
         .pipe(source('cdp.js'))
         .pipe(buffer())
         .pipe(babel({
@@ -126,9 +129,17 @@ function bundle() {
         .pipe(gulp.dest(conf.build.js));
 }
 
-gulp.task('script', ['clean', 'bower', 'eslint'], function () {
-    return bundle();
-});
+function buildScript () {
+    return bundle(b());
+}
+
+function watchScript () {
+    bundle(w);
+    w.on('update', bundle.bind(null, w));
+    w.on('log', util.log);
+}
+
+gulp.task('script', ['clean', 'bower', 'eslint'], buildScript);
 
 gulp.task('eslint', function () {
     return gulp.src(conf.js)
@@ -143,9 +154,8 @@ gulp.task('clean', function () {
 
 gulp.task('build', ['style', 'html', 'script']);
 
-gulp.task('watch', ['build'], function () {
-    b.on('update', bundle);
-    b.on('log', util.log);
+gulp.task('watch', ['style', 'html'], function () {
+    watchScript();
     gulp.watch(conf.less, ['style-watch']);
     gulp.watch(conf.js, ['eslint']);
 });
