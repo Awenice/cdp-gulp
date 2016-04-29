@@ -14,14 +14,19 @@ var gulp = require('gulp'),
     htmlreplace = require('gulp-html-replace'),
     uglify = require('gulp-uglify'),
     browserify = require('browserify'),
-    debowerify = require("debowerify"),
+    debowerify = require('debowerify'),
     watchify = require('watchify'),
     source = require('vinyl-source-stream'),
     buffer = require('vinyl-buffer'),
     babel = require('gulp-babel'),
     sourcemaps = require('gulp-sourcemaps'),
     plumber = require('gulp-plumber'),
-    eslint = require('gulp-eslint');
+    eslint = require('gulp-eslint'),
+    stylelint = require('gulp-stylelint'),
+    esLintConfig = require('./.eslintrc.json'),
+    styleLintConfig = require('stylelint-config-standard'),
+    path = require('path'),
+    plato = require('plato');
 
 var argv = require('minimist')(process.argv.slice(2), {
     string: 'env',
@@ -35,6 +40,8 @@ var conf = {
     html: 'src/*.html',
     js: 'src/js/**/*.js',
     mainJs: 'src/js/main.js',
+    platoDir: 'reports/plato',
+    gulpfile: 'gulpfile.js',
     sprite: {
         imgName: 'images/build/sprite.png',
         cssName: 'less/build/sprite.less',
@@ -59,7 +66,7 @@ gulp.task('bower', function () {
         .pipe(gulp.dest('bower_components'));
 });
 
-gulp.task('style', ['clean', 'bower', 'images'], function () {
+gulp.task('style', ['clean', 'bower', 'images', 'stylelint'], function () {
     return gulp.src([bootstrap.less, conf.less])
         .pipe(gulpif(argv.env !== 'production', sourcemaps.init()))
         .pipe(less())
@@ -69,7 +76,7 @@ gulp.task('style', ['clean', 'bower', 'images'], function () {
         .pipe(gulp.dest(conf.build.css));
 });
 
-gulp.task('style-watch', function () {
+gulp.task('style-watch', ['stylelint'], function () {
     return gulp.src([bootstrap.less, conf.less])
         .pipe(plumber({
             errorHandler: errorHandler
@@ -81,13 +88,25 @@ gulp.task('style-watch', function () {
         .pipe(remember())
         .pipe(concat('cdp.css'))
         .pipe(sourcemaps.write())
-        .pipe(gulp.dest(conf.build.css))
+        .pipe(gulp.dest(conf.build.css));
+});
+
+gulp.task('stylelint', function () {
+    return gulp.src(conf.less)
+        .pipe(stylelint({
+            failAfterError: true,
+            reporters: [
+                {formatter: 'string', console: true}
+            ],
+            config: styleLintConfig,
+            syntax: 'less'
+        }));
 });
 
 gulp.task('images', ['clean', 'bower', 'sprite'], function () {
     return gulp.src(conf.images)
         .pipe(gulpif(argv.env === 'production', imagemin()))
-        .pipe(gulp.dest(conf.build.images))
+        .pipe(gulp.dest(conf.build.images));
 });
 
 gulp.task('sprite', ['clean'], function () {
@@ -133,18 +152,26 @@ function buildScript () {
     return bundle(b());
 }
 
-function watchScript () {
+function watchScript (callback) {
     bundle(w);
     w.on('update', bundle.bind(null, w));
     w.on('log', util.log);
+    callback();
 }
 
 gulp.task('script', ['clean', 'bower', 'eslint'], buildScript);
 
 gulp.task('eslint', function () {
-    return gulp.src(conf.js)
-        .pipe(eslint())
+    return gulp.src([conf.js, conf.gulpfile])
+        // option cache didn't work in gulp-eslint
+        .pipe(cached('eslint'))
+        .pipe(eslint(esLintConfig))
         .pipe(eslint.format())
+        .pipe(eslint.result(function(result) {
+            if (result.warningCount > 0 || result.errorCount > 0) {
+                delete cached.caches.eslint[path.resolve(result.filePath)];
+            }
+        }))
         .pipe(eslint.failAfterError());
 });
 
@@ -152,12 +179,17 @@ gulp.task('clean', function () {
     return del([conf.build.folder, conf.build.tmpFolders]);
 });
 
+gulp.task('plato', function (callback) {
+    plato.inspect([conf.js, conf.gulpfile], conf.platoDir, { title: 'cdp-task' }, function() {
+        callback();
+    });
+});
+
 gulp.task('build', ['style', 'html', 'script']);
 
 gulp.task('watch', ['style', 'html'], function () {
     watchScript();
     gulp.watch(conf.less, ['style-watch']);
-    gulp.watch(conf.js, ['eslint']);
 });
 
 function errorHandler(error) {
